@@ -1,17 +1,16 @@
-package com.example.grpc.greeterServiceTest;
+package com.example.grpc;
 
-import com.example.grpc.GreeterGrpc;
-import com.example.grpc.HelloRequest;
-import com.example.grpc.HelloResponse;
+import com.example.grpc.intercepter.AuthInterceptor;
+import com.example.grpc.service.AuthService;
 import com.example.grpc.service.GreeterService;
-import io.grpc.ManagedChannel;
-import io.grpc.inprocess.InProcessChannelBuilder;
-import io.grpc.inprocess.InProcessServerBuilder;
+import io.grpc.*;
+import io.grpc.stub.MetadataUtils;
 import io.grpc.stub.StreamObserver;
 import org.junit.jupiter.api.*;
 
-import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.Iterator;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
@@ -21,39 +20,58 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class GreeterServiceTest {
 
-    private static ManagedChannel channel;
-    private static GreeterGrpc.GreeterBlockingStub blockingStub;
+    private static Server server;
+    private ManagedChannel channel;
+    private GreeterGrpc.GreeterBlockingStub blockingStub;
 
     @BeforeAll
-    static void setUp() throws IOException {
-        String serverName = InProcessServerBuilder.generateName();
-
-        // Start in-process gRPC server
-        InProcessServerBuilder.forName(serverName)
-                .directExecutor()
-                .addService(new GreeterService()) // Your service implementation
+    static void startServer() throws Exception {
+        // Start in-process gRPC server with AuthInterceptor
+        server = ServerBuilder.forPort(9090)
+                .addService(new AuthService())
+                .addService(new GreeterService())
+                .intercept(new AuthInterceptor())
                 .build()
                 .start();
+        System.out.println("🚀 gRPC Test Server started on port 9090");
+    }
 
-        // Create channel to connect to in-process server
-        channel = InProcessChannelBuilder.forName(serverName)
-                .directExecutor()
+    @AfterAll
+    static void stopServer() {
+        if (server != null) {
+            server.shutdownNow();
+        }
+    }
+
+    @BeforeEach
+    void setUp() {
+        // Create client channel
+        channel = ManagedChannelBuilder.forAddress("localhost", 9090)
+                .usePlaintext()
                 .build();
 
         blockingStub = GreeterGrpc.newBlockingStub(channel);
+        AuthGrpc.AuthBlockingStub authStub = AuthGrpc.newBlockingStub(channel);
+    }
+
+    @AfterEach
+    void tearDown() {
+        channel.shutdownNow();
     }
 
     @Test
     void sayHelloTest() {
         HelloRequest request = HelloRequest.newBuilder().setName("Piyush").build();
-        HelloResponse response = blockingStub.sayHello(request);
+        var stubWithAuth = authenticate();
+        HelloResponse response = stubWithAuth.sayHello(request);
         assertEquals("Hello Piyush", response.getMessage());
     }
 
     @Test
     void serverStreamingHelloTest() {
         HelloRequest request = HelloRequest.newBuilder().setName("Piyush").build();
-        Iterator<HelloResponse> responses = blockingStub.serverStreamHello(request);
+        var stubWithAuth = authenticate();
+        Iterator<HelloResponse> responses = stubWithAuth.serverStreamHello(request);
         List<String> messages = new ArrayList<>();
         int count = 0;
         while (responses.hasNext() && count < 3) { // limit messages
@@ -86,7 +104,17 @@ class GreeterServiceTest {
             }
         };
 
-        StreamObserver<HelloRequest> requestObserver = asyncStub.clientStreamHello(responseObserver);
+        String username = "admin";
+        String password = "password";
+        String credentials = Base64.getEncoder().encodeToString((username + ":" + password).getBytes(StandardCharsets.UTF_8));
+
+        Metadata headers = new Metadata();
+        headers.put(Metadata.Key.of("authorization", Metadata.ASCII_STRING_MARSHALLER), "Basic " + credentials);
+
+        ClientInterceptor interceptor = MetadataUtils.newAttachHeadersInterceptor(headers);
+        var stubWithAuth = GreeterGrpc.newStub(channel).withInterceptors(interceptor); // async stub
+
+        StreamObserver<HelloRequest> requestObserver = stubWithAuth.clientStreamHello(responseObserver);
 
         // Send multiple names
         requestObserver.onNext(HelloRequest.newBuilder().setName("Piyush").build());
@@ -108,7 +136,8 @@ class GreeterServiceTest {
     @Test
     void sayHelloWithEmptyNameTest() {
         HelloRequest request = HelloRequest.newBuilder().setName("").build();
-        HelloResponse response = blockingStub.sayHello(request);
+        var stubWithAuth = authenticate();
+        HelloResponse response = stubWithAuth.sayHello(request);
         // Assuming your service handles empty name gracefully
         assertEquals("Hello ", response.getMessage(), "Server should handle empty name");
     }
@@ -116,7 +145,8 @@ class GreeterServiceTest {
     @Test
     void serverStreamingHelloWithNullNameTest() {
         HelloRequest request = HelloRequest.newBuilder().setName("").build();
-        Iterator<HelloResponse> responses = blockingStub.serverStreamHello(request);
+        var stubWithAuth = authenticate();
+        Iterator<HelloResponse> responses = stubWithAuth.serverStreamHello(request);
         List<String> messages = new ArrayList<>();
         while (responses.hasNext()) {
             messages.add(responses.next().getMessage());
@@ -156,10 +186,15 @@ class GreeterServiceTest {
         assertTrue(latch.await(2, TimeUnit.SECONDS), "Did not receive cancellation error");
     }
 
-    @AfterAll
-    static void tearDown() {
-        if (channel != null) {
-            channel.shutdownNow();
-        }
+    private GreeterGrpc.GreeterBlockingStub authenticate() {
+        String username = "admin";
+        String password = "password";
+        String credentials = Base64.getEncoder().encodeToString((username + ":" + password).getBytes(StandardCharsets.UTF_8));
+
+        Metadata headers = new Metadata();
+        headers.put(Metadata.Key.of("authorization", Metadata.ASCII_STRING_MARSHALLER), "Basic " + credentials);
+
+        ClientInterceptor interceptor = MetadataUtils.newAttachHeadersInterceptor(headers);
+        return blockingStub.withInterceptors(interceptor);
     }
 }
