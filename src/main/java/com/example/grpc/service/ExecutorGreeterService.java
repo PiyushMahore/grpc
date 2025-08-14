@@ -17,7 +17,7 @@ public class ExecutorGreeterService extends GreeterGrpc.GreeterImplBase {
                 logger.info("Executor received from Main Server: {}", helloResponseWrapper);
 
                 // Simulate some processing
-                String processedName = "Processed: " + helloResponseWrapper.getMessage();
+                String processedName = helloResponseWrapper.getMessage();
 
                 // Send back to Main Server
                 HelloRequestWrapper reply = HelloRequestWrapper.newBuilder()

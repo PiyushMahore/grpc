@@ -15,7 +15,6 @@ public class GreeterService extends GreeterGrpc.GreeterImplBase {
     private final StreamObserver<HelloResponseWrapper> executorRequestStream;
 
     public GreeterService() {
-        // Create channel to executor
         ManagedChannel channel = ManagedChannelBuilder
                 .forAddress("localhost", 50052)
                 .usePlaintext()
@@ -23,14 +22,12 @@ public class GreeterService extends GreeterGrpc.GreeterImplBase {
 
         GreeterGrpc.GreeterStub executorStub = GreeterGrpc.newStub(channel);
 
-        // Start streaming with executor
         executorRequestStream = executorStub.exchange(new StreamObserver<HelloRequestWrapper>() {
             @Override
             public void onNext(HelloRequestWrapper helloRequestWrapper) {
                 // This is a request from the executor (not our client)
                 logger.info("Received from executor: {}", helloRequestWrapper);
-                respondToMessage(helloRequestWrapper.getReqId(),
-                        "Executor says hello to " + helloRequestWrapper.getName());
+                respondToMessage(helloRequestWrapper.getReqId(), helloRequestWrapper.getName());
             }
 
             @Override
@@ -46,7 +43,6 @@ public class GreeterService extends GreeterGrpc.GreeterImplBase {
     }
 
     private final Map<String, StreamObserver<HelloResponse>> observerMap = new HashMap<>();
-
     @Override
     public void sayHello(HelloRequest request, StreamObserver<HelloResponse> responseObserver) {
         String reqId = UUID.randomUUID().toString();
@@ -55,12 +51,10 @@ public class GreeterService extends GreeterGrpc.GreeterImplBase {
         // Send request to executor
         HelloResponseWrapper wrapper = HelloResponseWrapper.newBuilder()
                 .setReqId(reqId)
-                .setMessage("Hello from service to executor for " + request.getName())
+                .setMessage("Hello " + request.getName())
                 .build();
 
         executorRequestStream.onNext(wrapper);
-
-        // Don't respond here — wait for executor callback
     }
 
     private void respondToMessage(String reqId, String message) {

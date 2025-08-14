@@ -1,8 +1,5 @@
 package com.example.grpc;
 
-import com.example.grpc.intercepter.AuthInterceptor;
-import com.example.grpc.service.AuthService;
-import com.example.grpc.service.GreeterService;
 import io.grpc.*;
 import io.grpc.stub.MetadataUtils;
 import io.grpc.stub.StreamObserver;
@@ -20,38 +17,16 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class GreeterServiceTest {
 
-    private static Server server;
     private ManagedChannel channel;
     private GreeterGrpc.GreeterBlockingStub blockingStub;
 
-    @BeforeAll
-    static void startServer() throws Exception {
-        // Start in-process gRPC server with AuthInterceptor
-        server = ServerBuilder.forPort(9090)
-                .addService(new AuthService())
-                .addService(new GreeterService())
-                .intercept(new AuthInterceptor())
-                .build()
-                .start();
-        System.out.println("🚀 gRPC Test Server started on port 9090");
-    }
-
-    @AfterAll
-    static void stopServer() {
-        if (server != null) {
-            server.shutdownNow();
-        }
-    }
-
     @BeforeEach
     void setUp() {
-        // Create client channel
         channel = ManagedChannelBuilder.forAddress("localhost", 9090)
                 .usePlaintext()
                 .build();
 
         blockingStub = GreeterGrpc.newBlockingStub(channel);
-        AuthGrpc.AuthBlockingStub authStub = AuthGrpc.newBlockingStub(channel);
     }
 
     @AfterEach

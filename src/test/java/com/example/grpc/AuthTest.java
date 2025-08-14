@@ -1,12 +1,7 @@
 package com.example.grpc;
 
-import com.example.grpc.intercepter.AuthInterceptor;
-import com.example.grpc.service.GreeterService;
-import com.example.grpc.service.AuthService;
 import io.grpc.ManagedChannel;
 import io.grpc.ManagedChannelBuilder;
-import io.grpc.Server;
-import io.grpc.ServerBuilder;
 import io.grpc.StatusRuntimeException;
 import io.grpc.Metadata;
 import io.grpc.stub.MetadataUtils;
@@ -20,43 +15,14 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class AuthTest {
 
-    private static Server server;
-    private ManagedChannel channel;
     private GreeterGrpc.GreeterBlockingStub greeterStub;
-
-    @BeforeAll
-    static void startServer() throws Exception {
-        // Start in-process gRPC server with AuthInterceptor
-        server = ServerBuilder.forPort(9090)
-                .addService(new AuthService())
-                .addService(new GreeterService())
-                .intercept(new AuthInterceptor())
-                .build()
-                .start();
-        System.out.println("🚀 gRPC Test Server started on port 9090");
-    }
-
-    @AfterAll
-    static void stopServer() {
-        if (server != null) {
-            server.shutdownNow();
-        }
-    }
 
     @BeforeEach
     void setUp() {
-        // Create client channel
-        channel = ManagedChannelBuilder.forAddress("localhost", 9090)
+        ManagedChannel channel = ManagedChannelBuilder.forAddress("localhost", 9090)
                 .usePlaintext()
                 .build();
-
         greeterStub = GreeterGrpc.newBlockingStub(channel);
-        AuthGrpc.AuthBlockingStub authStub = AuthGrpc.newBlockingStub(channel);
-    }
-
-    @AfterEach
-    void tearDown() {
-        channel.shutdownNow();
     }
 
     @Test
